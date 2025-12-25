@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+google-genai
+python-dotenv
+pytesseract
+pillow
+pdfplumber
+python-multipart
+reportlab
