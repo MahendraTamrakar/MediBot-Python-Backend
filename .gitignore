@@ -1,1 +1,26 @@
 firebase-service-account.json
+# --- Python Basics ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# --- Virtual Environments ---
+venv/
+env/
+.venv/
+.env
+
+# --- Secrets & Configs (IMPORTANT) ---
+firebase-service-account.json
+config.json
+*.log
+
+# --- VS Code & IDEs ---
+.vscode/
+.idea/
+*.swp
+
+# --- Mac/Windows System Files ---
+.DS_Store
+Thumbs.db
