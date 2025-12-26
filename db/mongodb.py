@@ -1,8 +1,15 @@
+import certifi
 from motor.motor_asyncio import AsyncIOMotorClient
 from config.settings import MONGO_URI
 
-client = AsyncIOMotorClient(MONGO_URI)
-db = client.medibot_db
+client = AsyncIOMotorClient(
+    MONGO_URI,
+    tls=True,
+    tlsCAFile=certifi.where(),
+    serverSelectionTimeoutMS=30000
+)
 
+db = client.medibot_db
+medical_reports_collection = db.medical_reports
 users_collection = db.users
 chat_sessions_collection = db.chat_sessions

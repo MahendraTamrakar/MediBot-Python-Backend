@@ -14,9 +14,11 @@ from core.services.compliance_service import ComplianceService
 from core.services.profile_update_service import ProfileUpdateService
 from core.services.chat_history_service import ChatHistoryService
 
+
 # Infrastructure & DB
 from infrastructure.llm.gemini_llm import GeminiLLM
 from db.mongodb import users_collection, chat_sessions_collection
+from db.users_repo import ensure_user_exists
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -58,6 +60,7 @@ async def analyze(
     firebase_uid: str = Depends(get_current_user)
 ):
     try:
+        await ensure_user_exists(users_collection, firebase_uid)
         return await chat_service.analyze(firebase_uid, req.symptoms)
 
     except ValueError as e:
@@ -106,3 +109,34 @@ async def end_chat(
             "message": "Chat ended, but profile update failed",
             "profile_updated": False
         }
+
+@router.delete("/chats", status_code=status.HTTP_200_OK)
+async def delete_all_chats(
+    firebase_uid: str = Depends(get_current_user)
+):
+    try:
+        deleted_count = await chat_history_service.delete_all_sessions(firebase_uid)
+
+        return {
+            "message": "All chat history deleted",
+            "deleted_sessions": deleted_count
+        }
+
+    except Exception:
+        logger.exception("Failed to delete chat history")
+        raise HTTPException(500, "Failed to delete chat history")
+    
+@router.delete("/chats/{session_id}", status_code=status.HTTP_200_OK)
+async def delete_chat_session(
+    session_id: str,
+    firebase_uid: str = Depends(get_current_user)
+):
+    deleted = await chat_history_service.delete_session(firebase_uid, session_id)
+
+    if deleted == 0:
+        raise HTTPException(404, "Session not found")
+
+    return {
+        "message": "Chat session deleted",
+        "session_id": session_id
+    }

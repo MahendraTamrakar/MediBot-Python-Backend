@@ -7,3 +7,4 @@ pillow
 pdfplumber
 python-multipart
 reportlab
+certifi
