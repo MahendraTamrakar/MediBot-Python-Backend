@@ -12,3 +12,4 @@ email-validator
 redis>=4.5
 faiss-cpu
 numpy
+firebase-admin==6.5.0
