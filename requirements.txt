@@ -11,5 +11,6 @@ certifi
 email-validator
 redis>=4.5
 faiss-cpu
+motor==3.4.0
 numpy
 firebase-admin==6.5.0
