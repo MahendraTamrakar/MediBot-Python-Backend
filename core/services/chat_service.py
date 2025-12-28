@@ -1,5 +1,5 @@
 import json
-from prompts.medical_prompt import build_medical_prompt
+from prompts.medical_prompt import build_unified_chat_prompt
 
 
 class ChatService:
@@ -32,13 +32,17 @@ class ChatService:
         message: str
     ):
         """
-        Unified chat pipeline with document-QA priority (non-streaming).
+        Unified chat pipeline with conversation continuity.
         
-        If documents exist for the session → always use document-QA mode.
-        Otherwise → use medical chat mode.
+        - Always uses unified prompt (no conditional switching)
+        - Enforces Redis memory for conversation context
+        - Returns plain conversational text
         """
 
-        # Save user message
+        # Save user message to Redis (plain text format)
+        await self.redis.save_message(firebase_uid, session_id, "user", message)
+        
+        # Save user message to MongoDB history
         await self.chat_history.save_message(
             firebase_uid=firebase_uid,
             session_id=session_id,
@@ -46,21 +50,47 @@ class ChatService:
             content=message
         )
 
-        # Emergency override (applies to both modes)
+        # Emergency override
         if self.emergency.is_emergency(message):
             return await self._handle_emergency(firebase_uid, session_id)
 
-        # Check if documents exist for this session
-        has_documents = self.faiss.has_documents(firebase_uid, session_id)
+        # Get conversation history from Redis (plain text)
+        conversation_history = await self.redis.get_conversation_history(
+            firebase_uid, session_id, limit=10
+        )
+        
+        # Get user profile context
+        profile_context = await self.context_service.build_context(firebase_uid)
+        
+        # Get document context if available
+        document_context = await self._get_document_context(
+            firebase_uid, session_id, message
+        )
 
-        if has_documents:
-            return await self._handle_document_chat(
-                firebase_uid, session_id, message
-            )
-        else:
-            return await self._handle_medical_chat(
-                firebase_uid, session_id, message
-            )
+        # Build unified prompt with strong continuity enforcement
+        prompt = build_unified_chat_prompt(
+            user_message=message,
+            conversation_history=conversation_history,
+            user_profile=profile_context,
+            document_context=document_context
+        )
+
+        # Generate plain text response
+        response_text = await self._generate_plain_response(prompt)
+
+        # Save assistant response to Redis (plain text format)
+        await self.redis.save_message(firebase_uid, session_id, "assistant", response_text)
+        
+        # Save to MongoDB history
+        await self.chat_history.save_message(
+            firebase_uid, session_id, "assistant", response_text
+        )
+
+        return {
+            "session_id": session_id,
+            "type": "medical_chat",
+            "message": response_text
+        }
 
     async def stream_analyze(
         self,
@@ -69,14 +99,14 @@ class ChatService:
         message: str
     ):
         """
-        Streaming chat pipeline with document-QA priority.
-        Yields text tokens as they arrive from Gemini.
-        
-        Yields text chunks for streaming. Caller is responsible for 
-        saving to history after stream completes.
+        Streaming chat pipeline with conversation continuity.
+        Yields text tokens as they arrive from the LLM.
         """
 
-        # Save user message
+        # Save user message to Redis (plain text format)
+        await self.redis.save_message(firebase_uid, session_id, "user", message)
+        
+        # Save user message to MongoDB history
         await self.chat_history.save_message(
             firebase_uid=firebase_uid,
             session_id=session_id,
@@ -84,7 +114,7 @@ class ChatService:
             content=message
         )
 
-        # Emergency override (applies to both modes)
+        # Emergency override
         if self.emergency.is_emergency(message):
             response_text = (
                 "⚠️ Your symptoms may require urgent medical attention. "
@@ -92,21 +122,40 @@ class ChatService:
                 "Do not self-medicate. Avoid exertion until evaluated by a professional."
             )
             yield response_text
+            await self.redis.save_message(firebase_uid, session_id, "assistant", response_text)
+            await self.chat_history.save_message(firebase_uid, session_id, "assistant", response_text)
             return
 
-        # Check if documents exist for this session
-        has_documents = self.faiss.has_documents(firebase_uid, session_id)
+        # Get conversation history from Redis (plain text)
+        conversation_history = await self.redis.get_conversation_history(
+            firebase_uid, session_id, limit=10
+        )
+        
+        # Get user profile context
+        profile_context = await self.context_service.build_context(firebase_uid)
+        
+        # Get document context if available
+        document_context = await self._get_document_context(
+            firebase_uid, session_id, message
+        )
 
-        if has_documents:
-            async for chunk in self._stream_document_chat(
-                firebase_uid, session_id, message
-            ):
-                yield chunk
-        else:
-            async for chunk in self._stream_medical_chat(
-                firebase_uid, session_id, message
-            ):
-                yield chunk
+        # Build unified prompt with strong continuity enforcement
+        prompt = build_unified_chat_prompt(
+            user_message=message,
+            conversation_history=conversation_history,
+            user_profile=profile_context,
+            document_context=document_context
+        )
+
+        # Stream response
+        full_response = ""
+        async for chunk in self.llm.stream(prompt):
+            full_response += chunk
+            yield chunk
+
+        # Save complete response to Redis and MongoDB after streaming
+        await self.redis.save_message(firebase_uid, session_id, "assistant", full_response)
+        await self.chat_history.save_message(firebase_uid, session_id, "assistant", full_response)
 
     async def _handle_emergency(self, firebase_uid: str, session_id: str) -> dict:
         """Handle emergency situations with immediate response."""
@@ -116,130 +165,54 @@ class ChatService:
             "Do not self-medicate. Avoid exertion until evaluated by a professional."
         )
 
+        await self.redis.save_message(firebase_uid, session_id, "assistant", message)
         await self.chat_history.save_message(
             firebase_uid, session_id, "assistant", message
         )
 
         return {
+            "session_id": session_id,
             "type": "medical_chat",
             "message": message
         }
 
-    async def _handle_document_chat(
+    async def _get_document_context(
         self,
         firebase_uid: str,
         session_id: str,
         message: str
-    ) -> dict:
+    ) -> str:
         """
-        Document-QA mode: Answer questions from uploaded documents.
-        Returns plain chat-style text (no structured medical format).
+        Get document context if documents exist for this session.
+        Returns formatted document chunks or "No document provided."
         """
-        # Get conversation context
-        recent_memory = await self.redis.get_recent_messages(firebase_uid, session_id)
-        memory_text = self._format_memory(recent_memory)
-
-        # Search for relevant document chunks
-        query_embedding = await self.embedder.embed(message)
-        faiss_results = self._search_document_store(firebase_uid, session_id, query_embedding)
-
-        # Build document context (may be empty)
-        document_context = ""
-        if faiss_results:
-            document_context = "\n\n".join(
-                chunk["text"] if isinstance(chunk, dict) else str(chunk)
-                for chunk in faiss_results[:5]
+        # Check if documents exist for this session
+        has_documents = self.faiss.has_documents(firebase_uid, session_id)
+        
+        if not has_documents:
+            return "No document provided."
+        
+        try:
+            # Search for relevant document chunks
+            query_embedding = await self.embedder.embed(message)
+            faiss_results = self._search_document_store(
+                firebase_uid, session_id, query_embedding
             )
-
-        # Build document-QA prompt
-        if document_context:
-            prompt = f"""
-You are a helpful assistant answering questions about an uploaded document.
-
-Answer the user's question using ONLY the document context below.
-Be concise and direct. Do not add medical disclaimers unless specifically relevant.
-
-Document context:
-{document_context}
-
-Recent conversation:
-{memory_text}
-
-User question:
-{message}
-
-Provide a natural, conversational response.
-"""
-        else:
-            # Documents exist but no relevant chunks found
-            prompt = f"""
-The user has uploaded a document to this chat session, but I could not find 
-relevant information matching their question.
-
-User question: {message}
-
-Recent conversation:
-{memory_text}
-
-Respond helpfully, letting them know you couldn't find this specific information 
-in the uploaded document. Suggest they rephrase or ask about different aspects of the document.
-"""
-
-        # Generate response (plain text, not JSON)
-        response_text = await self._generate_plain_response(prompt)
-
-        # Save to history
-        await self.chat_history.save_message(
-            firebase_uid, session_id, "assistant", response_text
-        )
-        await self.redis.save_message(
-            firebase_uid, session_id, "assistant", response_text
-        )
-
-        return {
-            "type": "document_chat",
-            "message": response_text
-        }
-
-    async def _handle_medical_chat(
-        self,
-        firebase_uid: str,
-        session_id: str,
-        message: str
-    ) -> dict:
-        """
-        Medical chat mode: Plain text symptom analysis.
-        Returns simple chat-style message (no structured cards).
-        """
-        # Get context
-        profile_context = await self.context_service.build_context(firebase_uid)
-        recent_memory = await self.redis.get_recent_messages(firebase_uid, session_id)
-        memory_text = self._format_memory(recent_memory)
-
-        # Build medical prompt (plain text, safety-focused)
-        context = f"User profile:\n{profile_context}\n\nRecent conversation:\n{memory_text}"
-        prompt = build_medical_prompt(
-            user_input=message,
-            context=context
-        )
-
-        # Generate plain text response
-        response_text = await self._generate_plain_response(prompt)
-
-        # Save to history
-        await self.chat_history.save_message(
-            firebase_uid, session_id, "assistant", response_text
-        )
-        await self.redis.save_message(
-            firebase_uid, session_id, "assistant", response_text
-        )
-
-        return {
-            "type": "medical_chat",
-            "message": response_text
-        }
-
-        return data
+            
+            if not faiss_results:
+                return "Document uploaded but no relevant sections found for this query."
+            
+            # Format document chunks
+            chunks = []
+            for chunk in faiss_results[:5]:
+                if isinstance(chunk, dict):
+                    chunks.append(chunk.get("text", str(chunk)))
+                else:
+                    chunks.append(str(chunk))
+            
+            return "\n\n".join(chunks)
+        except Exception as e:
+            return f"Document context unavailable: {str(e)}"
 
     def _search_document_store(self, uid: str, session_id: str, query_embedding: list) -> list:
         """
@@ -290,20 +263,15 @@ in the uploaded document. Suggest they rephrase or ask about different aspects o
         return self.faiss.search(uid, session_id, query_embedding)
 
     def _format_memory(self, messages: list) -> str:
-        """Format recent messages for prompt context."""
+        """
+        Format recent messages for prompt context.
+        Messages are now plain text strings from Redis.
+        """
         if not messages:
             return "No previous messages."
 
-        formatted = []
-        for msg in messages:
-            if isinstance(msg, dict):
-                role = msg.get("role", "unknown")
-                content = msg.get("content", "")
-                formatted.append(f"{role.capitalize()}: {content}")
-            else:
-                formatted.append(str(msg))
-
-        return "\n".join(formatted[-6:])  # Last 6 messages
+        # Messages are already plain text strings like "User: hello"
+        return "\n".join(messages[-10:])  # Last 10 messages
 
     async def _generate_plain_response(self, prompt: str) -> str:
         """
@@ -332,99 +300,3 @@ in the uploaded document. Suggest they rephrase or ask about different aspects o
             return response.strip()
         except Exception as e:
             return f"I encountered an issue processing your request. Please try again."
-
-    async def _stream_document_chat(
-        self,
-        firebase_uid: str,
-        session_id: str,
-        message: str
-    ):
-        """
-        Stream document-QA responses. Yields text chunks and returns full response.
-        """
-        # Get conversation context
-        recent_memory = await self.redis.get_recent_messages(firebase_uid, session_id)
-        memory_text = self._format_memory(recent_memory)
-
-        # Search for relevant document chunks
-        query_embedding = await self.embedder.embed(message)
-        faiss_results = self._search_document_store(firebase_uid, session_id, query_embedding)
-
-        # Build document context (may be empty)
-        document_context = ""
-        if faiss_results:
-            document_context = "\\n\\n".join(
-                chunk["text"] if isinstance(chunk, dict) else str(chunk)
-                for chunk in faiss_results[:5]
-            )
-
-        # Build document-QA prompt
-        if document_context:
-            prompt = f"""
-You are a helpful assistant answering questions about an uploaded document.
-
-Answer the user's question using ONLY the document context below.
-Be concise and direct. Do not add medical disclaimers unless specifically relevant.
-
-Document context:
-{document_context}
-
-Recent conversation:
-{memory_text}
-
-User question:
-{message}
-
-Provide a natural, conversational response.
-"""
-        else:
-            # Documents exist but no relevant chunks found
-            prompt = f"""
-The user has uploaded a document to this chat session, but I could not find 
-relevant information matching their question.
-
-User question: {message}
-
-Recent conversation:
-{memory_text}
-
-Respond helpfully, letting them know you couldn't find this specific information 
-in the uploaded document. Suggest they rephrase or ask about different aspects of the document.
-"""
-
-        # Stream response
-        full_response = ""
-        async for chunk in self.llm.stream(prompt):
-            full_response += chunk
-            yield chunk
-
-        # Caller is responsible for saving to history after stream completes
-
-    async def _stream_medical_chat(
-        self,
-        firebase_uid: str,
-        session_id: str,
-        message: str
-    ):
-        """
-        Stream medical chat responses. Yields text chunks and returns full response.
-        """
-        # Get context
-        profile_context = await self.context_service.build_context(firebase_uid)
-        recent_memory = await self.redis.get_recent_messages(firebase_uid, session_id)
-        memory_text = self._format_memory(recent_memory)
-
-        # Build medical prompt (plain text, safety-focused)
-        context = f"User profile:\n{profile_context}\n\nRecent conversation:\n{memory_text}"
-        prompt = build_medical_prompt(
-            user_input=message,
-            context=context
-        )
-
-        # Stream response
-        full_response = ""
-        async for chunk in self.llm.stream(prompt):
-            full_response += chunk
-            yield chunk
-
-        # Caller is responsible for saving to history after stream completes
