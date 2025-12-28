@@ -394,57 +394,96 @@ curl http://localhost:8000/health
 ### Chat
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| POST | `/chat/stream` | Streaming chat with AI | Yes |
-| GET | `/chat/history` | Get chat history | Yes |
-| DELETE | `/chat/history/{chat_id}` | Delete chat session | Yes |
+| POST | `/analyze-symptoms` | Non-streaming chat with AI | Yes |
+| POST | `/analyze-symptoms/stream` | Streaming chat with AI (SSE) | Yes |
+| GET | `/chats` | Get all chat sessions | Yes |
+| GET | `/chats/{session_id}/messages` | Get messages for a chat session | Yes |
+| POST | `/end-chat` | End chat and update profile | Yes |
+| DELETE | `/chats` | Delete all chat history | Yes |
+| DELETE | `/chats/{session_id}` | Delete specific chat session | Yes |
+
+### Chat History
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| DELETE | `/chat-history/session/{session_id}` | Delete chat session | Yes |
+| DELETE | `/chat-history/all` | Delete all chat history | Yes |
 
 ### Documents
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| POST | `/chat-documents/upload` | Upload document to chat | Yes |
-| GET | `/chat-documents/{chat_id}` | Get chat documents | Yes |
-| DELETE | `/chat-documents/{document_id}` | Delete document | Yes |
+| POST | `/chat/upload-document` | Upload document to chat session | Yes |
 
 ### Medical Reports
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| POST | `/analyze-report` | Upload & analyze report | Yes |
-| GET | `/reports` | Get user reports | Yes |
-| GET | `/reports/{report_id}` | Get specific report | Yes |
-| DELETE | `/reports/{report_id}` | Delete report | Yes |
+| POST | `/analyze-report` | Upload & analyze medical report | Yes |
 
 ### User Profile
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| GET | `/profile` | Get user profile | Yes |
-| PUT | `/profile` | Update user profile | Yes |
-| DELETE | `/profile` | Delete user profile | Yes |
+| GET | `/user/profile` | Get user profile | Yes |
+| POST | `/user/profile` | Save/update user profile | Yes |
 
 ### Doctor Summary
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| POST | `/doctor-summary` | Generate doctor summary | Yes |
-| GET | `/doctor-summary/{summary_id}` | Get summary PDF | Yes |
+| GET | `/doctor-summary-pdf` | Generate and download doctor summary PDF | Yes |
+
+### Feedback
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| POST | `/feedback` | Submit feedback | No |
 
 ### Request/Response Examples
 
-#### Chat Stream Request
+#### Streaming Chat Request
 ```bash
-curl -X POST "http://localhost:8000/chat/stream" \
+curl -X POST "http://localhost:8000/analyze-symptoms/stream" \
   -H "Authorization: Bearer YOUR_FIREBASE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "message": "I have been experiencing headaches for 3 days",
-    "chat_id": "chat_001"
+    "symptoms": "I have been experiencing headaches for 3 days",
+    "session_id": "chat_001"
   }'
 ```
 
-#### Analyze Report Request
+#### Non-Streaming Chat Request
+```bash
+curl -X POST "http://localhost:8000/analyze-symptoms" \
+  -H "Authorization: Bearer YOUR_FIREBASE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "symptoms": "I have been experiencing headaches for 3 days",
+    "session_id": "chat_001"
+  }'
+```
+
+#### Upload Document to Chat
+```bash
+curl -X POST "http://localhost:8000/chat/upload-document" \
+  -H "Authorization: Bearer YOUR_FIREBASE_TOKEN" \
+  -F "file=@medical_document.pdf" \
+  -F "session_id=chat_001"
+```
+
+#### Analyze Medical Report Request
 ```bash
 curl -X POST "http://localhost:8000/analyze-report" \
   -H "Authorization: Bearer YOUR_FIREBASE_TOKEN" \
   -F "file=@report.pdf" \
   -F "consent=true"
+```
+
+#### Get Chat History
+```bash
+curl -X GET "http://localhost:8000/chats" \
+  -H "Authorization: Bearer YOUR_FIREBASE_TOKEN"
+```
+
+#### Get User Profile
+```bash
+curl -X GET "http://localhost:8000/user/profile" \
+  -H "Authorization: Bearer YOUR_FIREBASE_TOKEN"
 ```
 
 ## 🔧 Services Overview
