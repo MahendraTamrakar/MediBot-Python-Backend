@@ -12,5 +12,6 @@ email-validator
 redis>=4.5
 faiss-cpu
 motor==3.4.0
+pymongo==4.6.1
 numpy
 firebase-admin==6.5.0
