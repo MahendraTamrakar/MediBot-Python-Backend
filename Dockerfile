@@ -1,8 +1,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# MediBot FastAPI Backend - Production Dockerfile
+# MediBot FastAPI Backend - Production Dockerfile (Fixed)
 # ─────────────────────────────────────────────────────────────────────────────
 
-FROM python:3.11-slim
+FROM python:3.11
 
 # Prevent Python from writing pyc files and buffering stdout/stderr
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -11,12 +11,14 @@ ENV PYTHONUNBUFFERED=1
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (Tesseract OCR) for Linux
+# Install system dependencies (Tesseract OCR + New GL Libs)
+# FIX: Replaced 'libgl1-mesa-glx' with 'libgl1' and added 'mesa-utils'
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
     libtesseract-dev \
     tesseract-ocr-eng \
-    libgl1-mesa-glx \
+    libgl1 \
+    mesa-utils \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
@@ -45,7 +47,7 @@ USER appuser
 # Expose the application port
 EXPOSE 8000
 
-# Health check
+# Health check (Ensure your main.py actually has a /health endpoint!)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
 
