@@ -10,6 +10,11 @@ client = AsyncIOMotorClient(
 )
 
 db = client.medibot_db
+
+#core collections
 medical_reports_collection = db.medical_reports
 users_collection = db.users
 chat_sessions_collection = db.chat_sessions
+
+# FAISS metadata collection
+faiss_indexes_collection = db.faiss_indexes

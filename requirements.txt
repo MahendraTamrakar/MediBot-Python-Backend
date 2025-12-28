@@ -9,3 +9,6 @@ python-multipart
 reportlab
 certifi
 email-validator
+redis>=4.5
+faiss-cpu
+numpy

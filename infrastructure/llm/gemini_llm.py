@@ -26,3 +26,43 @@ class GeminiLLM:
         except Exception as e:
             # Let ChatService handle fallback
             raise RuntimeError(f"Gemini generation failed: {e}")
+
+    async def stream(self, prompt: str):
+        """
+        Stream text response from Gemini, yielding tokens as they arrive.
+        Returns an async generator that yields text chunks.
+        """
+        try:
+            response = self.client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config={
+                    "temperature": 0.7
+                },
+                stream=True
+            )
+
+            for chunk in response:
+                if chunk.text:
+                    yield chunk.text
+                    
+        except Exception as e:
+            import logging
+            logging.error(f"Gemini streaming failed: {e}")
+            yield f"Error generating response: {str(e)}"
+
+    async def embed(self, text: str) -> list[float]:
+        """
+        Generate embeddings for the given text using Gemini's embedding model.
+        """
+        try:
+            response = self.client.models.embed_content(
+                model="models/text-embedding-004",
+                contents=text
+            )
+            return response.embeddings[0].values
+        except Exception as e:
+            # Return empty embedding on failure to allow graceful degradation
+            import logging
+            logging.warning(f"Gemini embedding failed: {e}")
+            return []

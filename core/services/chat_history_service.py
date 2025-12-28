@@ -1,9 +1,86 @@
 from datetime import datetime
 from typing import Optional
+import uuid
 
 class ChatHistoryService:
     def __init__(self, collection):
         self.collection = collection
+
+    # ----------------------------------
+    # Generate a new session ID
+    # ----------------------------------
+    @staticmethod
+    def generate_session_id() -> str:
+        return str(uuid.uuid4())
+
+    # ----------------------------------
+    # Generate title from first message
+    # ----------------------------------
+    @staticmethod
+    def generate_title(message: str, max_length: int = 40) -> str:
+        title = message.strip()
+        if len(title) > max_length:
+            title = title[:max_length - 3] + "..."
+        return title
+
+    # ----------------------------------
+    # Check if session exists
+    # ----------------------------------
+    async def session_exists(
+        self,
+        firebase_uid: str,
+        session_id: str
+    ) -> bool:
+        doc = await self.collection.find_one(
+            {
+                "firebase_uid": firebase_uid,
+                "session_id": session_id
+            },
+            {"_id": 1}
+        )
+        return doc is not None
+
+    # ----------------------------------
+    # Create a new session
+    # ----------------------------------
+    async def create_session(
+        self,
+        firebase_uid: str,
+        session_id: str,
+        title: str
+    ) -> dict:
+        now = datetime.utcnow()
+        session_doc = {
+            "firebase_uid": firebase_uid,
+            "session_id": session_id,
+            "title": title,
+            "messages": [],
+            "created_at": now,
+            "updated_at": now
+        }
+        await self.collection.insert_one(session_doc)
+        return {
+            "session_id": session_id,
+            "title": title,
+            "created_at": now
+        }
+
+    # ----------------------------------
+    # Update session title
+    # ----------------------------------
+    async def update_title(
+        self,
+        firebase_uid: str,
+        session_id: str,
+        title: str
+    ):
+        await self.collection.update_one(
+            {
+                "firebase_uid": firebase_uid,
+                "session_id": session_id
+            },
+            {"$set": {"title": title, "updated_at": datetime.utcnow()}}
+        )
 
     # ----------------------------------
     # Save a message (per session)
@@ -28,8 +105,12 @@ class ChatHistoryService:
                         "timestamp": datetime.utcnow()
                     }
                 },
+                "$set": {
+                    "updated_at": datetime.utcnow()
+                },
                 "$setOnInsert": {
-                    "created_at": datetime.utcnow()
+                    "created_at": datetime.utcnow(),
+                    "title": "New Chat"
                 }
             },
             upsert=True
@@ -49,13 +130,30 @@ class ChatHistoryService:
         })
 
     # ----------------------------------
+    # List all sessions for a user
+    # ----------------------------------
+    async def list_sessions(self, firebase_uid: str) -> list:
+        cursor = self.collection.find(
+            {"firebase_uid": firebase_uid},
+            {
+                "_id": 0,
+                "session_id": 1,
+                "title": 1,
+                "created_at": 1,
+                "updated_at": 1
+            }
+        ).sort("updated_at", -1)
+        
+        return await cursor.to_list(length=100)
+
+    # ----------------------------------
     # Get latest session as plain text
     # (Used for profile update)
     # ----------------------------------
     async def get_recent_chat_text(self, firebase_uid: str) -> str:
         doc = await self.collection.find_one(
             {"firebase_uid": firebase_uid},
-            sort=[("created_at", -1)]
+            sort=[("updated_at", -1)]
         )
 
         if not doc or "messages" not in doc:
@@ -79,6 +177,10 @@ class ChatHistoryService:
             "session_id": session_id
         })
         return result.deleted_count
+
+    # Alias for compatibility
+    async def delete(self, firebase_uid: str, session_id: str) -> int:
+        return await self.delete_session(firebase_uid, session_id)
 
     # ----------------------------------
     # Delete all sessions for a user

@@ -1,10 +1,27 @@
 import json
+from datetime import datetime
+
+def _convert_datetime_to_str(obj):
+    """Recursively convert all datetime objects to ISO format strings."""
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    elif isinstance(obj, dict):
+        return {k: _convert_datetime_to_str(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_convert_datetime_to_str(item) for item in obj]
+    elif isinstance(obj, tuple):
+        return tuple(_convert_datetime_to_str(item) for item in obj)
+    else:
+        return obj
 
 def build_profile_update_prompt(
     current_user_profile_json: dict,
     recent_chat_history_text: str
 ) -> str:
-    profile_str = json.dumps(current_user_profile_json, indent=2)
+    # Recursively convert all datetime objects to strings
+    profile_copy = _convert_datetime_to_str(current_user_profile_json)
+    
+    profile_str = json.dumps(profile_copy, indent=2)
 
     return f"""
 You are a Medical Data Architect.

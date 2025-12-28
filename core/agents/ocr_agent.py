@@ -1,7 +1,17 @@
+import os
+import platform
 import pytesseract
 from PIL import Image
 import pdfplumber
 from core.agents.base_agent import BaseAgent
+
+# Configure Tesseract for cross-platform compatibility
+if platform.system() == "Windows":
+    # Windows: Use local installation path
+    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+else:
+    # Linux/Cloud: Use system PATH
+    pytesseract.pytesseract.tesseract_cmd = 'tesseract'
 
 class OCRAgent(BaseAgent):
     async def run(self, file_path: str) -> str:
