@@ -216,31 +216,12 @@ in the uploaded document. Suggest they rephrase or ask about different aspects o
         recent_memory = await self.redis.get_recent_messages(firebase_uid, session_id)
         memory_text = self._format_memory(recent_memory)
 
-        # Build simple medical chat prompt
-        prompt = f"""
-You are a helpful medical assistant providing general health guidance.
-
-Based on the user's symptoms, provide a concise, friendly response that:
-- Acknowledges their symptoms
-- Offers general guidance or possible explanations
-- Suggests when to see a doctor if appropriate
-- Reminds them this is not a diagnosis
-
-Keep your response conversational and under 3-4 sentences.
-Do NOT use bullet points, numbered lists, or structured formats.
-Write in a natural, flowing paragraph style.
-
-User profile:
-{profile_context}
-
-Recent conversation:
-{memory_text}
-
-User message:
-{message}
-
-Respond naturally as a helpful assistant:
-"""
+        # Build medical prompt (plain text, safety-focused)
+        context = f"User profile:\n{profile_context}\n\nRecent conversation:\n{memory_text}"
+        prompt = build_medical_prompt(
+            user_input=message,
+            context=context
+        )
 
         # Generate plain text response
         response_text = await self._generate_plain_response(prompt)
@@ -433,31 +414,12 @@ in the uploaded document. Suggest they rephrase or ask about different aspects o
         recent_memory = await self.redis.get_recent_messages(firebase_uid, session_id)
         memory_text = self._format_memory(recent_memory)
 
-        # Build simple medical chat prompt
-        prompt = f"""
-You are a helpful medical assistant providing general health guidance.
-
-Based on the user's symptoms, provide a concise, friendly response that:
-- Acknowledges their symptoms
-- Offers general guidance or possible explanations
-- Suggests when to see a doctor if appropriate
-- Reminds them this is not a diagnosis
-
-Keep your response conversational and under 3-4 sentences.
-Do NOT use bullet points, numbered lists, or structured formats.
-Write in a natural, flowing paragraph style.
-
-User profile:
-{profile_context}
-
-Recent conversation:
-{memory_text}
-
-User message:
-{message}
-
-Respond naturally as a helpful assistant:
-"""
+        # Build medical prompt (plain text, safety-focused)
+        context = f"User profile:\n{profile_context}\n\nRecent conversation:\n{memory_text}"
+        prompt = build_medical_prompt(
+            user_input=message,
+            context=context
+        )
 
         # Stream response
         full_response = ""
