@@ -15,6 +15,22 @@ class GoogleLoginRequest(BaseModel):
     id_token: str  # Google ID token obtained from Firebase Google sign-in
 
 
+@router.post("/signup/email", status_code=status.HTTP_201_CREATED)
+async def signup_with_email(body: EmailLoginRequest):
+    """Register a new user with email/password and return tokens."""
+    try:
+        result = await firebase_auth.sign_up_with_email_password(body.email, body.password)
+        return {
+            "idToken": result.get("idToken"),
+            "refreshToken": result.get("refreshToken"),
+            "expiresIn": int(result.get("expiresIn", 0)) if result.get("expiresIn") else None,
+            "uid": result.get("localId"),
+            "emailVerified": result.get("emailVerified", False),
+        }
+    except firebase_auth.FirebaseAuthError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @router.post("/login/email", status_code=status.HTTP_200_OK)
 async def login_with_email(body: EmailLoginRequest):
     """Authenticate with Firebase email/password and return tokens."""

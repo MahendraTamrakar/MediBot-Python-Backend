@@ -41,6 +41,17 @@ def _handle_response(response: httpx.Response) -> dict:
     raise FirebaseAuthError(message)
 
 
+async def sign_up_with_email_password(email: str, password: str) -> dict:
+    """Register a new user with email/password using Firebase Identity Toolkit REST API."""
+    api_key = _ensure_api_key()
+    url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={api_key}"
+    payload = {"email": email, "password": password, "returnSecureToken": True}
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        response = await client.post(url, json=payload)
+    return _handle_response(response)
+
+
 async def sign_in_with_email_password(email: str, password: str) -> dict:
     """Sign in with email/password using Firebase Identity Toolkit REST API."""
     api_key = _ensure_api_key()
