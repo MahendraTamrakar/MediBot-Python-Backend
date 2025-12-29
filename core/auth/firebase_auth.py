@@ -77,3 +77,17 @@ async def sign_in_with_google(id_token: str) -> dict:
     async with httpx.AsyncClient(timeout=10) as client:
         response = await client.post(url, json=payload)
     return _handle_response(response)
+
+
+async def send_password_reset_email(email: str) -> dict:
+    """Send a password reset email to the user using Firebase Identity Toolkit REST API."""
+    api_key = _ensure_api_key()
+    url = f"https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key={api_key}"
+    payload = {
+        "requestType": "PASSWORD_RESET",
+        "email": email
+    }
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        response = await client.post(url, json=payload)
+    return _handle_response(response)

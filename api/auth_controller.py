@@ -15,6 +15,10 @@ class GoogleLoginRequest(BaseModel):
     id_token: str  # Google ID token obtained from Firebase Google sign-in
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
 @router.post("/signup/email", status_code=status.HTTP_201_CREATED)
 async def signup_with_email(body: EmailLoginRequest):
     """Register a new user with email/password and return tokens."""
@@ -62,3 +66,37 @@ async def login_with_google(body: GoogleLoginRequest):
         }
     except firebase_auth.FirebaseAuthError as exc:
         raise HTTPException(status_code=401, detail=str(exc))
+
+
+@router.post("/forgot-password", status_code=status.HTTP_200_OK)
+async def forgot_password(body: ForgotPasswordRequest):
+    """Send a password reset email to the user."""
+    try:
+        await firebase_auth.send_password_reset_email(body.email)
+        return {
+            "message": "Password reset email sent successfully",
+            "email": body.email
+        }
+    except firebase_auth.FirebaseAuthError as exc:
+        error_message = str(exc)
+        # Provide user-friendly error messages
+        if "EMAIL_NOT_FOUND" in error_message:
+            raise HTTPException(
+                status_code=404,
+                detail="No account found with this email address"
+            )
+        elif "INVALID_EMAIL" in error_message:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid email address"
+            )
+        elif "USER_DISABLED" in error_message:
+            raise HTTPException(
+                status_code=403,
+                detail="This account has been disabled"
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Unable to send password reset email. Please try again"
+            )
