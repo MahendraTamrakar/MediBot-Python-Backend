@@ -1,8 +1,6 @@
 from fastapi import APIRouter, HTTPException, status, Depends
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 import logging
-import json
 
 # Auth
 from core.auth.dependencies import get_current_user
@@ -100,50 +98,6 @@ async def ensure_session(
     return session_id, None, False
 
 # ----------------------------
-# Helper: Streaming generator wrapper
-# ----------------------------
-async def stream_with_history(
-    firebase_uid: str,
-    session_id: str,
-    user_message: str,
-    is_document_mode: bool,
-    session_info: dict | None = None
-):
-    """
-    Generator that:
-    1. Streams tokens from chat service
-    2. Collects full response
-    3. Saves to MongoDB and Redis after stream completes
-    """
-    full_response = ""
-    
-    try:
-        # If new session, send session info first
-        if session_info:
-            yield f"data: {json.dumps({'session': session_info})}\n\n".encode('utf-8')
-        
-        # Stream response
-        async for chunk in chat_service.stream_analyze(firebase_uid, session_id, user_message):
-            full_response += chunk
-            # Yield with newline for streaming protocol
-            yield f"data: {json.dumps({'token': chunk})}\n\n".encode('utf-8')
-        
-        # After streaming completes, save full response to history and Redis
-        await chat_history_service.save_message(
-            firebase_uid, session_id, "assistant", full_response
-        )
-        await redis_memory.save_message(
-            firebase_uid, session_id, "assistant", full_response
-        )
-        
-        # Send completion signal
-        yield f"data: {json.dumps({'done': True, 'type': 'document_chat' if is_document_mode else 'medical_chat'})}\n\n".encode('utf-8')
-        
-    except Exception as e:
-        logger.exception("Error in stream_with_history")
-        yield f"data: {json.dumps({'error': str(e)})}\n\n".encode('utf-8')
-
-# ----------------------------
 # API Endpoints
 # ----------------------------
 
@@ -152,7 +106,7 @@ async def analyze(
     req: ChatRequest,
     firebase_uid: str = Depends(get_current_user)
 ):
-    """Streaming endpoint with auto session creation."""
+    """Analyze symptoms endpoint with auto session creation."""
     try:
         await ensure_user_exists(users_collection, firebase_uid)
         
@@ -161,22 +115,24 @@ async def analyze(
             firebase_uid, req.session_id, req.symptoms
         )
         
+        # Analyze symptoms using chat service
+        result = await chat_service.analyze(firebase_uid, session_id, req.symptoms)
+        
         # Check if documents exist for this session (for response type)
         is_document_mode = faiss_service.has_documents(firebase_uid, session_id)
         
-        # Prepare session info for new sessions
-        session_info = None
-        if is_new:
-            session_info = {"session_id": session_id, "title": title}
+        response = {
+            "session_id": session_id,
+            "type": "document_chat" if is_document_mode else "medical_chat",
+            "message": result["message"]
+        }
         
-        return StreamingResponse(
-            stream_with_history(firebase_uid, session_id, req.symptoms, is_document_mode, session_info),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive"
-            }
-        )
+        # Include session info for new sessions
+        if is_new:
+            response["title"] = title
+            response["is_new_session"] = True
+        
+        return response
 
     except ValueError as e:
         logger.warning(f"Validation error: {e}")
