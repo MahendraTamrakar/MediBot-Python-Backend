@@ -1,3 +1,4 @@
+import ssl
 import certifi
 from motor.motor_asyncio import AsyncIOMotorClient
 from config.settings import MONGO_URI
@@ -5,8 +6,10 @@ from config.settings import MONGO_URI
 client = AsyncIOMotorClient(
     MONGO_URI,
     tls=True,
-    tlsCAFile=certifi.where(),
-    serverSelectionTimeoutMS=30000
+    tlsAllowInvalidCertificates=True,  # Workaround for SSL handshake issues
+    serverSelectionTimeoutMS=30000,
+    connectTimeoutMS=30000,
+    socketTimeoutMS=30000
 )
 
 db = client.medibot_db

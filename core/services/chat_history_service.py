@@ -3,8 +3,9 @@ from typing import Optional
 import uuid
 
 class ChatHistoryService:
-    def __init__(self, collection):
+    def __init__(self, collection, llm=None):
         self.collection = collection
+        self.llm = llm
 
     # ----------------------------------
     # Generate a new session ID
@@ -14,10 +15,37 @@ class ChatHistoryService:
         return str(uuid.uuid4())
 
     # ----------------------------------
-    # Generate title from first message
+    # Generate title from first message using LLM
     # ----------------------------------
+    async def generate_title(self, message: str, max_length: int = 40) -> str:
+        """Generate a concise, meaningful title from the user's message using LLM."""
+        if not self.llm:
+            # Fallback to simple truncation if no LLM
+            return self._fallback_title(message, max_length)
+        
+        try:
+            prompt = f"""Generate a short, concise title (max 5 words) for a medical chat session based on this user message. 
+Return ONLY the title, nothing else. No quotes, no explanation.
+
+User message: "{message}"
+
+Title:"""
+            
+            title = await self.llm.generate(prompt)
+            title = title.strip().strip('"\'')
+            
+            # Ensure it's not too long
+            if len(title) > max_length:
+                title = title[:max_length - 3] + "..."
+            
+            return title if title else self._fallback_title(message, max_length)
+            
+        except Exception:
+            return self._fallback_title(message, max_length)
+    
     @staticmethod
-    def generate_title(message: str, max_length: int = 40) -> str:
+    def _fallback_title(message: str, max_length: int = 40) -> str:
+        """Fallback title generation by truncating message."""
         title = message.strip()
         if len(title) > max_length:
             title = title[:max_length - 3] + "..."

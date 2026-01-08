@@ -43,7 +43,7 @@ faiss_service = FaissService(base_path="faiss_store")
 # Initialize embedding service
 embedding_service = EmbeddingService(llm=llm)
 
-chat_history_service = ChatHistoryService(chat_sessions_collection)
+chat_history_service = ChatHistoryService(chat_sessions_collection, llm=llm)
 
 chat_service = ChatService(
     llm=llm,
@@ -86,14 +86,14 @@ async def ensure_session(
     # Generate session_id if not provided
     if not session_id:
         session_id = chat_history_service.generate_session_id()
-        title = chat_history_service.generate_title(first_message)
+        title = await chat_history_service.generate_title(first_message)
         await chat_history_service.create_session(firebase_uid, session_id, title)
         return session_id, title, True
     
     # Check if session exists
     exists = await chat_history_service.session_exists(firebase_uid, session_id)
     if not exists:
-        title = chat_history_service.generate_title(first_message)
+        title = await chat_history_service.generate_title(first_message)
         await chat_history_service.create_session(firebase_uid, session_id, title)
         return session_id, title, True
     
