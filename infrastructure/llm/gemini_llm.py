@@ -33,13 +33,12 @@ class GeminiLLM:
         Returns an async generator that yields text chunks.
         """
         try:
-            response = self.client.models.generate_content(
+            response = self.client.models.generate_content_stream(
                 model="gemini-2.5-flash",
                 contents=prompt,
                 config={
                     "temperature": 0.7
-                },
-                stream=True
+                }
             )
 
             for chunk in response:

@@ -147,44 +147,8 @@ async def stream_with_history(
 # API Endpoints
 # ----------------------------
 
-@router.post("/analyze-symptoms", status_code=status.HTTP_200_OK)
+@router.post("/analyze-symptoms", status_code=200)
 async def analyze(
-    req: ChatRequest,
-    firebase_uid: str = Depends(get_current_user)
-):
-    """Non-streaming endpoint with auto session creation."""
-    try:
-        await ensure_user_exists(users_collection, firebase_uid)
-        
-        # Ensure session exists or create it
-        session_id, title, is_new = await ensure_session(
-            firebase_uid, req.session_id, req.symptoms
-        )
-        
-        # Get chat response
-        response = await chat_service.analyze(firebase_uid, session_id, req.symptoms)
-        
-        # Include session info in response
-        result = {
-            "session_id": session_id,
-            **response
-        }
-        
-        if is_new and title:
-            result["title"] = title
-        
-        return result
-
-    except ValueError as e:
-        logger.warning(f"Validation error: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
-
-    except Exception:
-        logger.exception("Unexpected server error in analyze")
-        raise HTTPException(status_code=500, detail="An error occurred.")
-
-@router.post("/analyze-symptoms/stream", status_code=200)
-async def analyze_stream(
     req: ChatRequest,
     firebase_uid: str = Depends(get_current_user)
 ):
@@ -219,7 +183,7 @@ async def analyze_stream(
         raise HTTPException(status_code=400, detail=str(e))
 
     except Exception:
-        logger.exception("Unexpected server error in analyze stream")
+        logger.exception("Unexpected server error in analyze")
         raise HTTPException(status_code=500, detail="An error occurred.")
 
 @router.get("/chats", status_code=200)
