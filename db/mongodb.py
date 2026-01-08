@@ -6,7 +6,7 @@ from config.settings import MONGO_URI
 client = AsyncIOMotorClient(
     MONGO_URI,
     tls=True,
-    tlsAllowInvalidCertificates=True,  # Workaround for SSL handshake issues
+    tlsCAFile=certifi.where(), 
     serverSelectionTimeoutMS=30000,
     connectTimeoutMS=30000,
     socketTimeoutMS=30000
