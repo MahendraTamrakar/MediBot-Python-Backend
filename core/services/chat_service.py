@@ -50,9 +50,9 @@ class ChatService:
             content=message
         )
 
-        # Emergency override
+        # Emergency override - use enhanced emergency detection
         if self.emergency.is_emergency(message):
-            return await self._handle_emergency(firebase_uid, session_id)
+            return await self._handle_emergency(firebase_uid, session_id, message)
 
         # Get conversation history from Redis (plain text)
         conversation_history = await self.redis.get_conversation_history(
@@ -114,13 +114,10 @@ class ChatService:
             content=message
         )
 
-        # Emergency override
-        if self.emergency.is_emergency(message):
-            response_text = (
-                "⚠️ Your symptoms may require urgent medical attention. "
-                "Please seek immediate medical care or call emergency services. "
-                "Do not self-medicate. Avoid exertion until evaluated by a professional."
-            )
+        # Emergency override - use enhanced emergency detection
+        emergency_response = self.emergency.get_emergency_response(message)
+        if emergency_response["is_emergency"]:
+            response_text = emergency_response["message"]
             yield response_text
             await self.redis.save_message(firebase_uid, session_id, "assistant", response_text)
             await self.chat_history.save_message(firebase_uid, session_id, "assistant", response_text)
@@ -157,13 +154,18 @@ class ChatService:
         await self.redis.save_message(firebase_uid, session_id, "assistant", full_response)
         await self.chat_history.save_message(firebase_uid, session_id, "assistant", full_response)
 
-    async def _handle_emergency(self, firebase_uid: str, session_id: str) -> dict:
-        """Handle emergency situations with immediate response."""
-        message = (
-            "⚠️ Your symptoms may require urgent medical attention. "
-            "Please seek immediate medical care or call emergency services. "
-            "Do not self-medicate. Avoid exertion until evaluated by a professional."
-        )
+    async def _handle_emergency(self, firebase_uid: str, session_id: str, user_message: str) -> dict:
+        """Handle emergency situations with immediate response using enhanced detection."""
+        emergency_response = self.emergency.get_emergency_response(user_message)
+        message = emergency_response["message"]
+        
+        # Add emergency resources if critical
+        if emergency_response["urgency_level"] == "critical":
+            resources = self.emergency.get_emergency_resources()
+            resources_text = "\n\n**Emergency Numbers:**\n" + "\n".join(
+                [f"• {region}: {number}" for region, number in resources.items()]
+            )
+            message += resources_text
 
         await self.redis.save_message(firebase_uid, session_id, "assistant", message)
         await self.chat_history.save_message(
@@ -173,7 +175,9 @@ class ChatService:
         return {
             "session_id": session_id,
             "type": "medical_chat",
-            "message": message
+            "message": message,
+            "urgency_level": emergency_response["urgency_level"],
+            "matched_keywords": emergency_response["matched_keywords"]
         }
 
     async def _get_document_context(
