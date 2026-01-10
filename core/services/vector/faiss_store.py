@@ -13,7 +13,7 @@ class FaissVectorStore:
         else:
             quantizer = faiss.IndexFlatL2(dim)
             self.index = faiss.IndexIVFFlat(quantizer, dim, 100)
-            self.index.train(np.random.random((1000, dim)).astype("float32"))
+            self.index.train(np.random.random((3900, dim)).astype("float32"))
             self.metadata = []
 
     def add(self, vectors: list[list[float]], metadata: list[dict]):

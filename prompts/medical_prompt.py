@@ -222,17 +222,7 @@ Use emojis strategically to:
 
 
 def build_medical_prompt(user_input: str, context: str = "") -> str:
-    """
-    DEPRECATED: Use build_unified_chat_prompt instead.
-    This function is kept for backward compatibility.
     
-    Args:
-        user_input: The user's message
-        context: Legacy context parameter (maps to user_profile)
-    
-    Returns:
-        Formatted prompt string
-    """
     return build_unified_chat_prompt(
         user_message=user_input,
         conversation_history="",
