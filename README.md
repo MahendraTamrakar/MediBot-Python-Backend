@@ -34,7 +34,8 @@ A sophisticated AI-powered medical chatbot backend built with FastAPI, featuring
 - 🔒 **Firebase Authentication** - Secure user authentication and authorization
 - 💾 **Persistent Memory** - Redis-based chat history and context management
 - 📊 **User Profile Management** - Dynamic medical profile updates from conversations
-- 🚨 **Emergency Detection** - Automatic identification of critical medical situations
+- �️ **Profile Photo Upload** - Secure image upload with validation (max 5MB, jpg/png/webp)
+- �🚨 **Emergency Detection** - Automatic identification of critical medical situations
 - 📚 **Document Management** - Upload and manage medical documents per chat session
 - 🏥 **Doctor Summary Generation** - Comprehensive patient summaries for healthcare providers
 
@@ -160,6 +161,7 @@ backend/
 │   │   ├── report_analysis_service.py # Report analysis
 │   │   ├── doctor_pdf_service.py   # PDF generation
 │   │   ├── profile_update_service.py # Profile updates
+│   │   ├── profile_photo_service.py # Profile photo upload/delete
 │   │   ├── pdf_service.py          # PDF utilities
 │   │   ├── faiss_service.py        # FAISS vector store
 │   │   │
@@ -203,6 +205,9 @@ backend/
 │   ├── medical_prompt.py          # Medical chat prompts
 │   ├── diagnosis_prompt.py        # Diagnosis prompts
 │   └── profile_update_prompt.py   # Profile update prompts
+│
+├── uploads/                       # User Uploads
+│   └── profile-photos/            # Profile photo storage
 │
 └── faiss_store/                   # FAISS Vector Indexes
     └── *.index                    # User-specific FAISS indexes
@@ -421,8 +426,11 @@ curl http://localhost:8000/health
 ### User Profile
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| GET | `/user/profile` | Get user profile | Yes |
+| GET | `/user/profile` | Get user personal details | Yes |
 | POST | `/user/profile` | Save/update user profile | Yes |
+| POST | `/user/profile/photo` | Upload profile photo (max 5MB) | Yes |
+| DELETE | `/user/profile/photo` | Delete profile photo | Yes |
+| GET | `/user/medical-profile` | Get medical profile data | Yes |
 
 ### Doctor Summary
 | Method | Endpoint | Description | Auth Required |
@@ -483,6 +491,25 @@ curl -X GET "http://localhost:8000/chats" \
 #### Get User Profile
 ```bash
 curl -X GET "http://localhost:8000/user/profile" \
+  -H "Authorization: Bearer YOUR_FIREBASE_TOKEN"
+```
+
+#### Upload Profile Photo
+```bash
+curl -X POST "http://localhost:8000/user/profile/photo" \
+  -H "Authorization: Bearer YOUR_FIREBASE_TOKEN" \
+  -F "file=@profile_picture.jpg"
+```
+
+#### Delete Profile Photo
+```bash
+curl -X DELETE "http://localhost:8000/user/profile/photo" \
+  -H "Authorization: Bearer YOUR_FIREBASE_TOKEN"
+```
+
+#### Get Medical Profile
+```bash
+curl -X GET "http://localhost:8000/user/medical-profile" \
   -H "Authorization: Bearer YOUR_FIREBASE_TOKEN"
 ```
 

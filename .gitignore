@@ -24,3 +24,6 @@ config.json
 # --- Mac/Windows System Files ---
 .DS_Store
 Thumbs.db
+
+# --- Uploads ---
+uploads/
