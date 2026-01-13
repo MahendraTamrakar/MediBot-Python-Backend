@@ -106,6 +106,7 @@ async def delete_profile_photo(
     
     - Removes the photo from storage
     - Sets profile_photo_url to null in the database
+    - Returns success even if no photo exists (idempotent operation)
     """
     try:
         # Get current profile photo URL
@@ -118,8 +119,9 @@ async def delete_profile_photo(
         if user and user.get("personal_details"):
             photo_url = user["personal_details"].get("profile_photo_url")
         
+        # If no photo exists, return success (idempotent delete)
         if not photo_url:
-            raise HTTPException(404, "No profile photo found")
+            return {"message": "No profile photo to delete"}
         
         # Delete from storage
         await photo_service.delete_photo(photo_url)
