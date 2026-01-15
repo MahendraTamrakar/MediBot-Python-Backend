@@ -282,10 +282,10 @@ class ChatService:
         Generate a plain text response (not JSON).
         Uses a modified prompt to avoid JSON output.
         """
+        import logging
         try:
             # Try to get plain text response
             response = await self.llm.generate(prompt)
-            
             # If response looks like JSON, extract the text
             if response.strip().startswith("{"):
                 try:
@@ -298,9 +298,10 @@ class ChatService:
                     for value in data.values():
                         if isinstance(value, str) and len(value) > 10:
                             return value
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as jde:
+                    logging.error(f"JSON decode error in _generate_plain_response: {jde}. Response: {response}")
                     pass
-            
             return response.strip()
         except Exception as e:
+            logging.error(f"Exception in _generate_plain_response: {e}", exc_info=True)
             return f"I encountered an issue processing your request. Please try again."
