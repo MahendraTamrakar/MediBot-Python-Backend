@@ -1,3 +1,5 @@
+
+import json
 from google import genai
 from config.settings import GEMINI_API_KEY
 
@@ -19,12 +21,17 @@ class GeminiLLM:
                     "temperature": 0.2
                 }
             )
-
-            # Gemini guarantees JSON due to response_mime_type
             return response.text
-
         except Exception as e:
-            # Let ChatService handle fallback
+            import logging
+            logging.error(f"Gemini generation failed: {e}")
+            # Check for quota exhaustion (429)
+            if hasattr(e, 'args') and e.args and '429' in str(e.args[0]):
+                return json.dumps({
+                    "error": "quota_exceeded",
+                    "message": "Gemini API quota exceeded. Please check your plan or try again later."
+                })
+            # Let ChatService handle other errors
             raise RuntimeError(f"Gemini generation failed: {e}")
 
     async def stream(self, prompt: str):
